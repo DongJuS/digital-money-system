@@ -2,17 +2,20 @@ global:
   scrape_interval: 15s
 
 scrape_configs:
-  # graph-node exposes Prometheus metrics on :8040 (runs on the Mac).
+  # graph-node exposes Prometheus metrics on :8040.
+  # Co-located (monitoring on the same Mac as graph-node): use host.docker.internal.
+  # Remote (monitoring on the Windows box): replace with MAC_TAILNET_IP:8040.
   - job_name: graph-node
     static_configs:
-      - targets: ["MAC_TAILNET_IP:8040"]
+      - targets: ["host.docker.internal:8040"]
+        # - targets: ["MAC_TAILNET_IP:8040"]   # remote (Windows) alternative
 
   # Prometheus self.
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]
 
-  # Optional: node/host metrics if you run node_exporter on the Windows box.
-  # - job_name: windows-node
+  # Optional: node/host metrics if you run node_exporter / windows_exporter.
+  # - job_name: host
   #   static_configs:
-  #     - targets: ["localhost:9182"]   # windows_exporter default
+  #     - targets: ["host.docker.internal:9100"]
