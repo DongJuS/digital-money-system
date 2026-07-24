@@ -1,0 +1,4 @@
+node_modules/
+.env
+deployments/*.local.json
+.DS_Store
