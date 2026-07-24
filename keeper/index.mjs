@@ -1,6 +1,6 @@
 // Liquidation keeper daemon (Liquity v2 / bold).
-// Polls the subgraph for troves, checks health via each branch TroveManager,
-// and calls batchLiquidateTroves on under-collateralized ones.
+// Discovers branches from the subgraph, reads each branch's price + trove ICRs
+// on-chain, and liquidates under-collateralized troves via batchLiquidateTroves.
 // Designed to run on the Windows (Tailscale) box, pointed at the Mac anvil + graph-node.
 //
 // Run:  RPC_URL=http://MAC_TAILNET_IP:8545 \
@@ -17,34 +17,44 @@ const SUBGRAPH = process.env.SUBGRAPH ?? "http://MAC_TAILNET_IP:8000/subgraphs/n
 // anvil account #0 (dev only — never use a real key here)
 const PK = process.env.KEEPER_PK ?? "0xac0974bec39a17e36ba4a6b4d238ff944bae0e5c469daf7d449b5cf1a5c8f97e";
 const POLL_MS = Number(process.env.POLL_MS ?? 12000);
+// Branch MCR (110% default). LST branches may be higher; conservative for a dev keeper.
+const MCR = BigInt(process.env.MCR ?? "1100000000000000000");
+// anvil fee-negotiation quirk (forge 1.7.1): force legacy gas.
+const GAS_PRICE = BigInt(process.env.GAS_PRICE ?? "1000000000");
 
 const tmAbi = parseAbi([
   "function getTroveIdsCount() view returns (uint256)",
   "function getTroveFromTroveIdsArray(uint256) view returns (uint256)",
   "function getCurrentICR(uint256 troveId, uint256 price) view returns (uint256)",
-  "function getTroveStatus(uint256) view returns (uint8)",
+  "function getUnbackedPortionPriceAndRedeemability() view returns (uint256, uint256, bool)",
   "function batchLiquidateTroves(uint256[] troveArray)",
 ]);
-const pfAbi = parseAbi(["function fetchPrice() returns (uint256, bool)", "function lastGoodPrice() view returns (uint256)"]);
-const MCR = 1100000000000000000n; // 110% (branch-dependent; read from TroveManager.MCR() for production)
 
-const account = privateKeyToAccount(PK);
-const pub = createPublicClient({ transport: http(RPC_URL) });
-const wallet = createWalletClient({ account, transport: http(RPC_URL) });
+// Two signing modes:
+//  - KEEPER_ACCOUNT set  -> "unlocked" mode: the node signs (eth_sendTransaction).
+//    Use with anvil (`--unlocked`); avoids a forge/anvil client-side fee-estimation quirk.
+//  - otherwise           -> local signer from KEEPER_PK (real deployments).
+const UNLOCKED = process.env.KEEPER_ACCOUNT;
+const account = UNLOCKED ?? privateKeyToAccount(PK);
+const CHAIN_ID = Number(process.env.CHAIN_ID ?? 31337);
+const chain = {
+  id: CHAIN_ID, name: "local", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: { default: { http: [RPC_URL] } },
+};
+const pub = createPublicClient({ chain, transport: http(RPC_URL) });
+const wallet = createWalletClient({ account, chain, transport: http(RPC_URL) });
 
-// Discover branches (TroveManager + PriceFeed) from the subgraph's CollateralAddresses.
+// Discover branch TroveManagers from the subgraph.
 async function branches() {
-  const q = `{ collaterals{ collIndex addresses{ troveManager priceFeed } } }`;
+  const q = `{ collaterals{ collIndex addresses{ troveManager } } }`;
   const res = await fetch(SUBGRAPH, {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query: q }),
   }).then((r) => r.json());
-  return (res.data?.collaterals ?? []).map((c) => ({
-    idx: c.collIndex, tm: c.addresses.troveManager, pf: c.addresses.priceFeed,
-  }));
+  return (res.data?.collaterals ?? []).map((c) => ({ idx: c.collIndex, tm: c.addresses.troveManager }));
 }
 
 async function scanBranch(b) {
-  const price = await pub.readContract({ address: b.pf, abi: pfAbi, functionName: "lastGoodPrice" }).catch(() => 0n);
+  const [, price] = await pub.readContract({ address: b.tm, abi: tmAbi, functionName: "getUnbackedPortionPriceAndRedeemability" });
   const count = await pub.readContract({ address: b.tm, abi: tmAbi, functionName: "getTroveIdsCount" });
   const unhealthy = [];
   for (let i = 0n; i < count; i++) {
@@ -52,21 +62,31 @@ async function scanBranch(b) {
     const icr = await pub.readContract({ address: b.tm, abi: tmAbi, functionName: "getCurrentICR", args: [id, price] }).catch(() => 2n * MCR);
     if (icr < MCR) unhealthy.push(id);
   }
-  if (unhealthy.length) {
-    console.log(`[branch ${b.idx}] liquidating ${unhealthy.length} trove(s) @ price ${price}`);
-    const hash = await wallet.writeContract({ address: b.tm, abi: tmAbi, functionName: "batchLiquidateTroves", args: [unhealthy] });
+  // The protocol won't let the last trove in a branch be liquidated, so leave one.
+  let toLiq = unhealthy;
+  if (toLiq.length >= Number(count) && Number(count) > 0) toLiq = toLiq.slice(0, Number(count) - 1);
+  if (toLiq.length) {
+    console.log(`\n[branch ${b.idx}] price=${price} liquidating ${toLiq.length}/${unhealthy.length} unhealthy trove(s)`);
+    const hash = await wallet.writeContract({
+      address: b.tm, abi: tmAbi, functionName: "batchLiquidateTroves", args: [toLiq], account,
+      // In unlocked mode let the node fill gas/fees; in signer mode force legacy gas (anvil quirk).
+      ...(UNLOCKED ? {} : { gas: 5_000_000n, gasPrice: GAS_PRICE }),
+    });
     console.log(`  tx ${hash}`);
   }
+  return { idx: b.idx, price, count: Number(count), unhealthy: unhealthy.length };
 }
 
 async function tick() {
   try {
     const bs = await branches();
-    for (const b of bs) await scanBranch(b);
-    process.stdout.write(".");
+    const rows = [];
+    for (const b of bs) rows.push(await scanBranch(b));
+    const summary = rows.map((r) => `b${r.idx}:${r.count}t/${r.unhealthy}liq`).join(" ");
+    process.stdout.write(`\r[${new Date().toISOString()}] ${summary}   `);
   } catch (e) { console.error("tick error:", e.shortMessage ?? e.message); }
 }
 
-console.log(`keeper up — RPC ${RPC_URL}, subgraph ${SUBGRAPH}, poll ${POLL_MS}ms`);
+console.log(`keeper up — RPC ${RPC_URL}, subgraph ${SUBGRAPH}, MCR ${MCR}, poll ${POLL_MS}ms`);
 await tick();
 setInterval(tick, POLL_MS);

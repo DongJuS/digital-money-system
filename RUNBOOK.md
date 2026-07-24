@@ -73,6 +73,35 @@ cast call 0x720d6cddec51199cac4d2b146674df61f75a669c 'totalSupply()(uint256)' --
    ```
    실측: status 1→3, trove count 8→7, gasUsed ~473k.
 
+## M5 프론트엔드 + 키퍼 (검증됨)
+### 프론트엔드 (Next.js, `frontend/app`)
+```bash
+pnpm install                    # 루트, 프론트 워크스페이스 포함
+# 배포 매니페스트 -> 프론트 env (컨트랙트 주소 자동)
+cd contracts && pnpm tsx utils/deployment-manifest-to-app-env.ts deployment-manifest.json > /tmp/app-contracts.env
+# .env.local = 템플릿(.env) + 위 컨트랙트 + 로컬 체인 오버라이드
+#   NEXT_PUBLIC_CHAIN_ID=31337, CHAIN_RPC_URL=http://localhost:8545,
+#   SUBGRAPH_URL=http://localhost:8000/subgraphs/name/liquity2/liquity2, SAFE_API_URL=(빈값)
+cd ../frontend/app && pnpm build-deps && pnpm dev    # http://localhost:3000  (<title>Liquity V2</title>)
+```
+- **Multicall3 필수**: anvil엔 `0xca11...`에 Multicall3가 없음 → 프론트 배치 리드 실패. 주입:
+  ```bash
+  # Multicall3.sol 컴파일 후 런타임 바이트코드를 캐논 주소에 주입 (anvil 재시작마다 필요)
+  cast rpc anvil_setCode 0xca11bde05977b3631167028862be2a173976ca11 <runtime-bytecode> --rpc-url $RPC
+  cast call 0xca11bde05977b3631167028862be2a173976ca11 'getBlockNumber()(uint256)' --rpc-url $RPC   # 동작 확인
+  ```
+
+### 키퍼 (`keeper/`, viem)
+```bash
+cd keeper && npm install
+# 언락 모드(anvil이 서명; 클라이언트 서명 수수료 버그 회피). 실배포는 KEEPER_PK 사용.
+RPC_URL=$RPC SUBGRAPH=http://localhost:8000/subgraphs/name/liquity2/liquity2 \
+  KEEPER_ACCOUNT=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 POLL_MS=2000 node index.mjs
+```
+- 브랜치 TroveManager를 서브그래프에서 발견 → `getUnbackedPortionPriceAndRedeemability()`로 가격 →
+  `getCurrentICR`로 ICR<MCR 판정 → `batchLiquidateTroves`. **브랜치 마지막 trove는 청산 불가**라 count-1로 캡.
+- 실측: branch2 가격 $1 하락 시 키퍼가 7/8 자동 청산(count 8→1).
+
 ## 알려진 이슈 / 주의
 - **cast send 서명 버그**: forge 1.7.1 + anvil에서 클라이언트 서명이 "insufficient funds"/추정 실패를 냄 →
   **`--from <anvil-acct> --unlocked`** (anvil이 서명)로 회피. (`--legacy --gas-price 1gwei`로도 안 되는 경우 있음.)
