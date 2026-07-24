@@ -8,11 +8,11 @@
 ## Tailnet 토폴로지 (Tailscale)
 | 호스트 | tailnet IP | 역할 |
 |---|---|---|
-| `mac-ddongui` (this Mac, M5 Pro 48GB) | **100.123.177.95** | anvil + 컨트랙트 + graph-node/서브그래프 + 프론트(dev) |
-| `ddj127` (Windows, 32GB+/GPU) | 100.95.248.14 | Blockscout 익스플로러 + Prometheus/Grafana + 키퍼 |
-| `alpha-oci-hub` (Linux, OCI) | 100.106.57.42 | (예비) 상시 서비스 오프로드 후보 |
+| `<mac-host>` (this Mac, M5 Pro 48GB) | **MAC_TAILNET_IP** | anvil + 컨트랙트 + graph-node/서브그래프 + 프론트(dev) |
+| `<windows-host>` (Windows, 32GB+/GPU) | WINDOWS_TAILNET_IP | Blockscout 익스플로러 + Prometheus/Grafana + 키퍼 |
+| `<linux-host>` (Linux, OCI) | LINUX_TAILNET_IP | (예비) 상시 서비스 오프로드 후보 |
 
-- anvil은 `--host 0.0.0.0`로 바인딩되어 **100.123.177.95:8545** 로 tailnet 어디서든 도달 가능(검증됨).
+- anvil은 `--host 0.0.0.0`로 바인딩되어 **MAC_TAILNET_IP:8545** 로 tailnet 어디서든 도달 가능(검증됨).
 
 ## 검증된 환경 (Mac)
 - Foundry 1.7.1 · Node 20.20.2(nvm) · pnpm 8.15.8 · colima(도커, arm64 VM 4cpu/8GB)
@@ -65,7 +65,7 @@ cast call 0x720d6cddec51199cac4d2b146674df61f75a669c 'totalSupply()(uint256)' --
   가격 하락은 래퍼 `setPrice`가 아니라 **하위 mock aggregator의 `updateAnswer`** 로 해야 함(→ M3 잔여 작업).
 
 ## 다음 (Windows / Tailscale 박스)
-`infra/` 의 compose들을 Windows에서 실행, 모두 `100.123.177.95`(Mac anvil/graph) 를 가리킴:
+`infra/` 의 compose들을 Windows에서 실행, 모두 `MAC_TAILNET_IP`(Mac anvil/graph) 를 가리킴:
 - `infra/monitoring/` — Prometheus(graph-node `:8040` 메트릭 스크레이프) + Grafana
 - `infra/blockscout/` — 익스플로러 (anvil RPC = tailnet Mac)
 - `keeper/` — TS 청산 키퍼 데몬

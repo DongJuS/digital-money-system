@@ -3,8 +3,8 @@
 // and calls batchLiquidateTroves on under-collateralized ones.
 // Designed to run on the Windows (Tailscale) box, pointed at the Mac anvil + graph-node.
 //
-// Run:  RPC_URL=http://100.123.177.95:8545 \
-//       SUBGRAPH=http://100.123.177.95:8000/subgraphs/name/liquity2/liquity2 \
+// Run:  RPC_URL=http://MAC_TAILNET_IP:8545 \
+//       SUBGRAPH=http://MAC_TAILNET_IP:8000/subgraphs/name/liquity2/liquity2 \
 //       node index.mjs
 //
 // Deps:  npm i viem   (Node 20+)
@@ -12,8 +12,8 @@
 import { createPublicClient, createWalletClient, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-const RPC_URL = process.env.RPC_URL ?? "http://100.123.177.95:8545";
-const SUBGRAPH = process.env.SUBGRAPH ?? "http://100.123.177.95:8000/subgraphs/name/liquity2/liquity2";
+const RPC_URL = process.env.RPC_URL ?? "http://MAC_TAILNET_IP:8545";
+const SUBGRAPH = process.env.SUBGRAPH ?? "http://MAC_TAILNET_IP:8000/subgraphs/name/liquity2/liquity2";
 // anvil account #0 (dev only — never use a real key here)
 const PK = process.env.KEEPER_PK ?? "0xac0974bec39a17e36ba4a6b4d238ff944bae0e5c469daf7d449b5cf1a5c8f97e";
 const POLL_MS = Number(process.env.POLL_MS ?? 12000);

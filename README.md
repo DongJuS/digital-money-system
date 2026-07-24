@@ -7,6 +7,8 @@ A learning/dev build of a modern **CDP stablecoin**, run across two home machine
 - **Topology:** Mac M5 Pro (48GB, arm64) = **dev + latency-sensitive**; Windows PC (32GB+, GPU) = **heavy Dockerized services**, joined into one LAN devnet. See [`docs/02-system-architecture.md`](docs/02-system-architecture.md).
 - **Goal level:** local testnet full-stack — mint / borrow / redeem / liquidate + oracle + indexer + explorer + frontend + monitoring.
 
+> **Environment values:** infra files use placeholders (`MAC_TAILNET_IP`, `WINDOWS_TAILNET_IP`, `LINUX_TAILNET_IP`). The real Tailscale IPs/hostnames live in the **private** overlay repo `digital-money-system-env` — substitute them from there.
+
 ## The 3-agent team (`.claude/agents/`)
 | Agent | Role | Machine focus |
 |---|---|---|
