@@ -1,0 +1,13 @@
+{
+  "name": "stablecoin-keeper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Liquidation keeper daemon for the local Liquity v2 (bold) deployment",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "viem": "^2.21.0"
+  }
+}

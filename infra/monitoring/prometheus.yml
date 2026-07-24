@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # graph-node exposes Prometheus metrics on :8040 (runs on the Mac).
+  - job_name: graph-node
+    static_configs:
+      - targets: ["100.123.177.95:8040"]
+
+  # Prometheus self.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Optional: node/host metrics if you run node_exporter on the Windows box.
+  # - job_name: windows-node
+  #   static_configs:
+  #     - targets: ["localhost:9182"]   # windows_exporter default

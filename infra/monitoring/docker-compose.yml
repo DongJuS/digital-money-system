@@ -1,0 +1,30 @@
+# Monitoring stack — run on the Windows (Tailscale) box.
+# Scrapes graph-node Prometheus metrics from the Mac (100.123.177.95:8040).
+# Bring up:  docker compose up -d   (Grafana on :3001, Prometheus on :9090)
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom_data:/prometheus
+    extra_hosts:
+      - host.docker.internal:host-gateway
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  prom_data:
+  grafana_data:
