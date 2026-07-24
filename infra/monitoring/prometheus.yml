@@ -5,7 +5,7 @@ scrape_configs:
   # graph-node exposes Prometheus metrics on :8040 (runs on the Mac).
   - job_name: graph-node
     static_configs:
-      - targets: ["100.123.177.95:8040"]
+      - targets: ["MAC_TAILNET_IP:8040"]
 
   # Prometheus self.
   - job_name: prometheus

@@ -1,5 +1,5 @@
 # Monitoring stack — run on the Windows (Tailscale) box.
-# Scrapes graph-node Prometheus metrics from the Mac (100.123.177.95:8040).
+# Scrapes graph-node Prometheus metrics from the Mac (MAC_TAILNET_IP:8040).
 # Bring up:  docker compose up -d   (Grafana on :3001, Prometheus on :9090)
 services:
   prometheus:
