@@ -18,6 +18,15 @@
 - Foundry 1.7.1 · Node 20.20.2(nvm) · pnpm 8.15.8 · colima(도커, arm64 VM 4cpu/8GB)
 - 레포: `bold/` (liquity/bold, 서브모듈 포함)
 
+## 원커맨드 브링업 (M6)
+전체 스택(anvil→배포→Multicall3→서브그래프→프론트→모니터링)을 한 번에:
+```bash
+bash scripts/up-mac.sh
+# => RPC :8545 · subgraph :8000 · frontend :3000 · grafana :3001 · prometheus :9090
+```
+모니터링(Prometheus가 graph-node `:8040` 스크레이프 + Grafana)은 `infra/monitoring/`에서 `docker-compose up -d`.
+아래는 각 단계 수동 절차(디버깅용).
+
 ## 브링업 순서 (Mac) — 전부 실측 통과
 ```bash
 # 0) 셸 환경
