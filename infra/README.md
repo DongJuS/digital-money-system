@@ -29,20 +29,33 @@ cd infra/monitoring && docker compose up -d
 ```
 graph-node publishes rich Prometheus metrics (subgraph sync head, block ingest, query latency) on `:8040`.
 
-## 2) Blockscout explorer  (config verified; heavy pull)
-Blockscout ships a dedicated **`anvil.yml`** compose (variant `anvil`, CHAIN_ID 31337). In WSL2 docker the
-default `host.docker.internal:8545` points at Windows, not the Mac — **repoint every RPC URL to the Mac tailnet IP**:
+## 2) Blockscout explorer  (RUNNING on Windows/WSL2 — 12 services, indexing the Mac chain)
+Blockscout ships a dedicated **`anvil.yml`** compose (variant `anvil`, CHAIN_ID 31337). Verified recipe:
 ```bash
 cd ~/blockscout/docker-compose
+# a) repoint every RPC URL at the Mac (default host.docker.internal points at Windows, not the Mac)
 sed -i "s#host.docker.internal:8545#MAC_TAILNET_IP:8545#g" envs/common-blockscout.env anvil.yml
-docker compose -f anvil.yml up -d      # 12 services; UI on the proxy port (:80)
+# b) fixes needed for a local anvil deploy:
+echo "ECTO_USE_SSL=false"            >> envs/common-blockscout.env   # db has no SSL
+echo "NFT_MEDIA_HANDLER_ENABLED=false" >> envs/common-blockscout.env # avoids dets :eacces
+mkdir -p dets logs && chmod -R 777 dets logs                          # backend writes ./dets
+docker compose -f anvil.yml up -d                                     # 12 services; UI on proxy :80
+docker update --restart unless-stopped $(docker ps -q)                # survive WSL restarts
 ```
-Bridge containers in WSL2 reach `MAC_TAILNET_IP` fine (verified). **Caveat:** the stack is ~several GB across
-12 images; on a slow/flaky link the pull can take a long time. Pull it while a live WSL session is held (or as a
-persistent `systemd-run` unit) so it isn't killed by WSL idle-shutdown, then `up -d`. If the box bogs down under
-the pull, let it settle and resume `up -d` (cached layers continue). Alternatively run Blockscout on the Mac
-(colima) where pulls are fast, pointed at `localhost:8545`.
-(Lightweight alternative: Otterscan — `docker run -p 5100:80 -e ERIGON_URL=http://MAC_TAILNET_IP:8545 otterscan/otterscan`.)
+Bridge containers reach `MAC_TAILNET_IP` fine; backend indexes from block 0 (verified: 193 txns, "index caught up",
+API 200, UI 200). **Pull caveat:** ~several GB / 12 images on a flaky link — pull under a persistent `systemd-run`
+unit (sequential per-service with retries) so WSL idle-shutdown doesn't kill it; add `[wsl2]\nvmIdleTimeout=-1` to
+`%USERPROFILE%\.wslconfig` for stability.
+
+**Browser access from the Mac (the hard part):** WSL2 services are NOT reachable from the Windows host by default —
+the **WSL Hyper-V firewall blocks inbound** (`DefaultInboundAction=Block`) and localhost-forwarding/portproxy then
+fail. One of these (each a one-time action) fixes it:
+- *Elevated PowerShell on Windows:* `Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow`
+  then `netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=4000 connectaddress=<WSL_IP> connectport=80`
+  + firewall-allow 4000 → browse `http://WINDOWS_TAILNET_IP:4000`.
+- *Or* run `tailscale up` inside WSL (join the tailnet directly) → browse the WSL tailnet IP:80.
+- *Or* run Blockscout on the Mac (colima) pointed at `localhost:8545` (no cross-host networking).
+(Note: `networkingMode=mirrored` failed on this box — `0x8007054f` — keep NAT.)
 
 ## 3) Keeper — liquidation daemon  (VERIFIED on Windows, native Node)
 No Docker needed — just Node 20+.
