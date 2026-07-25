@@ -1,18 +1,31 @@
 # infra/ — Windows (Tailscale) box services
 
 All services point at the **Mac tailnet IP `MAC_TAILNET_IP`** (anvil `:8545`, graph-node `:8040/:8000`).
-Prereq on Windows: Docker Desktop (WSL2) + Tailscale up. Confirm reachability first:
+The Windows box is driven from the Mac over **Tailscale SSH** (`ssh <user>@<win-host>`).
 
-```powershell
-curl http://MAC_TAILNET_IP:8545   # anvil
-curl http://MAC_TAILNET_IP:8000/  # graph-node
+> **VERIFIED (2026-07-25):** keeper + monitoring run on the Windows box against the Mac's chain over Tailscale.
+> - Keeper (native Node) → cross-machine liquidation: dropped a branch price on the Mac, the **Windows keeper
+>   liquidated 7/8 troves** on the Mac's anvil (branch count 8→1), confirmed from the Mac.
+> - Prometheus (WSL2 docker) → `up{job="graph-node", instance="MAC_TAILNET_IP:8040"} = 1` + Grafana v13.1.1.
+
+### Docker on Windows — use native dockerd in WSL2 (headless), not Docker Desktop
+Docker Desktop needs an interactive desktop session and won't start over SSH. Use WSL2's native engine:
+```bash
+wsl -d Ubuntu -u root -- bash -lc \
+  "dpkg --configure -a; rm -f /usr/bin/docker; \
+   apt-get update && apt-get install -y docker.io docker-compose-v2 && \
+   systemctl enable --now docker && docker --version"
+# WSL2 reaches the Mac tailnet IP directly (verified). Use network_mode: host so containers hit MAC_TAILNET_IP.
 ```
+Confirm reachability first (from WSL): `curl http://MAC_TAILNET_IP:8545` and `http://MAC_TAILNET_IP:8040/metrics`.
 
-## 1) Monitoring — Prometheus + Grafana
+## 1) Monitoring — Prometheus + Grafana  (VERIFIED on Windows/WSL2)
+For the Windows box, set the Prometheus target to `MAC_TAILNET_IP:8040` and use `network_mode: host`
+(so containers reach the Mac tailnet IP directly). Grafana `GF_SERVER_HTTP_PORT=3001`, host networking.
 ```bash
 cd infra/monitoring && docker compose up -d
-# Grafana  http://localhost:3001  (admin/admin) → add Prometheus datasource http://prometheus:9090
-# Prometheus http://localhost:9090 → target graph-node MAC_TAILNET_IP:8040 should be UP
+# Prometheus :9090 -> up{job="graph-node"} == 1   (scraping the Mac over Tailscale)
+# Grafana :3001 (admin/admin), datasource Prometheus = http://localhost:9090
 ```
 graph-node publishes rich Prometheus metrics (subgraph sync head, block ingest, query latency) on `:8040`.
 
@@ -32,12 +45,15 @@ docker compose -f geth.yml up -d      # UI on http://localhost:80
 ```
 (Lightweight alternative: Otterscan — `docker run -p 5100:80 -e ERIGON_URL=http://MAC_TAILNET_IP:8545 otterscan/otterscan`.)
 
-## 3) Keeper — liquidation daemon
+## 3) Keeper — liquidation daemon  (VERIFIED on Windows, native Node)
+No Docker needed — just Node 20+.
 ```bash
 cd keeper && npm install
 RPC_URL=http://MAC_TAILNET_IP:8545 \
 SUBGRAPH=http://MAC_TAILNET_IP:8000/subgraphs/name/liquity2/liquity2 \
+KEEPER_ACCOUNT=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 \
 node index.mjs
 ```
-Polls each branch's TroveManager for ICR < MCR and calls `batchLiquidateTroves`. Combine with the M3
-price-drop script (mock aggregator `updateAnswer`) on the Mac to trigger a live liquidation end-to-end.
+Discovers branches via the subgraph, reads price from `getUnbackedPortionPriceAndRedeemability`,
+liquidates ICR<MCR troves via `batchLiquidateTroves` (caps to count-1). `KEEPER_ACCOUNT` = node-signing
+(anvil unlocked); real deployments set `KEEPER_PK`. Trigger with the M3 price-drop on the Mac.
