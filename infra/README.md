@@ -29,20 +29,19 @@ cd infra/monitoring && docker compose up -d
 ```
 graph-node publishes rich Prometheus metrics (subgraph sync head, block ingest, query latency) on `:8040`.
 
-## 2) Blockscout explorer
-Blockscout ships a large official compose; only the RPC endpoint needs to change. Use their compose and set:
-```
-ETHEREUM_JSONRPC_HTTP_URL=http://MAC_TAILNET_IP:8545
-ETHEREUM_JSONRPC_TRACE_URL=http://MAC_TAILNET_IP:8545
-ETHEREUM_JSONRPC_VARIANT=anvil        # (geth-compatible; anvil supports debug/trace)
-CHAIN_ID=31337
-```
+## 2) Blockscout explorer  (config verified; heavy pull)
+Blockscout ships a dedicated **`anvil.yml`** compose (variant `anvil`, CHAIN_ID 31337). In WSL2 docker the
+default `host.docker.internal:8545` points at Windows, not the Mac — **repoint every RPC URL to the Mac tailnet IP**:
 ```bash
-git clone https://github.com/blockscout/blockscout
-cd blockscout/docker-compose
-# edit envs/common-blockscout.env with the four vars above, then:
-docker compose -f geth.yml up -d      # UI on http://localhost:80
+cd ~/blockscout/docker-compose
+sed -i "s#host.docker.internal:8545#MAC_TAILNET_IP:8545#g" envs/common-blockscout.env anvil.yml
+docker compose -f anvil.yml up -d      # 12 services; UI on the proxy port (:80)
 ```
+Bridge containers in WSL2 reach `MAC_TAILNET_IP` fine (verified). **Caveat:** the stack is ~several GB across
+12 images; on a slow/flaky link the pull can take a long time. Pull it while a live WSL session is held (or as a
+persistent `systemd-run` unit) so it isn't killed by WSL idle-shutdown, then `up -d`. If the box bogs down under
+the pull, let it settle and resume `up -d` (cached layers continue). Alternatively run Blockscout on the Mac
+(colima) where pulls are fast, pointed at `localhost:8545`.
 (Lightweight alternative: Otterscan — `docker run -p 5100:80 -e ERIGON_URL=http://MAC_TAILNET_IP:8545 otterscan/otterscan`.)
 
 ## 3) Keeper — liquidation daemon  (VERIFIED on Windows, native Node)
