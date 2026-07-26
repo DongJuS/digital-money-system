@@ -57,6 +57,27 @@ fail. One of these (each a one-time action) fixes it:
 - *Or* run Blockscout on the Mac (colima) pointed at `localhost:8545` (no cross-host networking).
 (Note: `networkingMode=mirrored` failed on this box — `0x8007054f` — keep NAT.)
 
+### Blockscout on the Mac (colima) — VERIFIED browsable at http://localhost
+The clean path (no WSL↔host networking): run it in colima alongside the graph stack.
+```bash
+git clone --depth 1 https://github.com/blockscout/blockscout ~/blockscout
+cd ~/blockscout/docker-compose
+# RPC default host.docker.internal:8545 already reaches the Mac anvil (colima). Fixes:
+echo "ECTO_USE_SSL=false" >> envs/common-blockscout.env
+echo "NFT_MEDIA_HANDLER_ENABLED=false" >> envs/common-blockscout.env
+mkdir -p dets logs && chmod -R 777 dets logs
+# browser-facing RPC -> localhost (host.docker.internal won't resolve in the Mac browser):
+sed -i '' 's#NEXT_PUBLIC_NETWORK_RPC_URL: http://host.docker.internal:8545/#NEXT_PUBLIC_NETWORK_RPC_URL: http://localhost:8545/#' anvil.yml
+# COLIMA FIX: postgres bind mounts can't chown -> switch to named volumes:
+sed -i '' 's#- \./blockscout-db-data:/var/lib/postgresql/data#- blockscout-db-data:/var/lib/postgresql/data#g' services/db.yml
+sed -i '' 's#- \./stats-db-data:/var/lib/postgresql/data#- stats-db-data:/var/lib/postgresql/data#g' services/stats.yml
+printf '\nvolumes:\n  blockscout-db-data:\n  stats-db-data:\n' >> anvil.yml
+docker compose -f anvil.yml pull        # retry once or twice on transient ghcr timeouts
+docker compose -f anvil.yml up -d --pull never --force-recreate
+docker update --restart unless-stopped $(docker compose -f anvil.yml ps -q)
+```
+Verified: 10 services running, `finished_indexing=true` (ratio 1.00), total_blocks 195 / txns 194, **UI http://localhost = 200**.
+
 ## 3) Keeper — liquidation daemon  (VERIFIED on Windows, native Node)
 No Docker needed — just Node 20+.
 ```bash
