@@ -1,0 +1,14 @@
+{
+  "name": "fx-relayer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Fetches USD/KRW from a public API and pushes it to the on-chain FxOracle",
+  "scripts": {
+    "start": "node index.mjs",
+    "once": "node index.mjs --once"
+  },
+  "dependencies": {
+    "viem": "^2.21.0"
+  }
+}
